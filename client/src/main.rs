@@ -5,8 +5,11 @@ use std::env::args;
 use std::io::*;
 use std::thread;
 use std::net::TcpStream;
+use tungstenite::{connect, client::{client, IntoClientRequest}, error::Error, WebSocket, Message};
+use tungstenite::client::AutoStream;
+use url::Url;
 
-
+const PORT: u16 = 5000;
 
 fn main() {
     let args: Vec<String> = args().collect();
@@ -14,41 +17,22 @@ fn main() {
         let server_ip = args[1].as_str();
 
         let interfaces = get_if_addrs().expect("Could not obtain network interfaces."); // list of all network interfaces
-        let client_ip = interfaces[0].ip(); // pick first interface as client ip (could end up being wrong but doesn't affect program)
-        println!("Starting Client at {}", client_ip);
-
-        println!("{}", get_date_time());
-        let stream = TcpStream::connect((server_ip, 5000)).expect("Could not connect to server."); // connect to server
-        println!("Connected to the server...");
-
-        let mut reader = BufReader::new(&stream); // reader to make reading from stream more efficient
-        let mut writer = BufWriter::new(&stream); // writer to make writing to stream more efficient
-
-        let mut server_msg = String::new();
-        let mut client_msg = String::new();
-
-        println!("Enter your client messages one by one and press return key!");
-
-        loop {
-            server_msg.clear();
-            client_msg.clear();
-            stdin().read_line(&mut client_msg).unwrap(); // input from cli
-            match send_string(&mut writer, &client_msg) { // send msg
-                Ok(_) => (),  // Do nothing else on success
-                Err(_) => {   // Break out of loop if connection dropped and quit
-                    println!("Error: Server Disconnected..... Quiting");
-                    break;
-                }
-            }
-            match reader.read_line(&mut server_msg) { // read incoming text
-                Ok(_) => (),  // Do nothing else on success
-                Err(_) => {   // Break out of loop if connection dropped and quit
-                    println!("Error: Server Disconnected..... Quiting");
-                    break;
-                }
-            }
-            println!("Server ({}): {}", get_date_time(), server_msg);
+        let mut client_ip = interfaces[0].ip(); // pick first interface as client ip (could end up being wrong but doesn't affect program)
+        if client_ip.is_loopback() {
+            client_ip = interfaces[1].ip();
         }
+        println!("Starting Client at {}", client_ip);
+        println!("{}", get_date_time());
+
+        // let stream = TcpStream::connect((server_ip, PORT)).unwrap();
+        println!("Connected to the server...");
+        // let read_stream = stream.try_clone().expect("Failed to Clone TcpStream.");
+        // let send_stream = stream.try_clone().expect("Failed to Clone TcpStream.");
+        thread::spawn(move || {
+            handle_send();
+        });
+        handle_read();
+
     } else {
         println!("Not enough arguments.")
     }
@@ -65,4 +49,40 @@ fn get_date_time() -> DelayedFormat<StrftimeItems<'static>> {
 fn send_string(writer: &mut BufWriter<&TcpStream>, msg: &str) -> Result<()> {
     writer.write(msg.as_bytes()).unwrap();
     writer.flush()
+}
+
+fn handle_read() {
+    loop {
+        let (mut socket, _response) = connect(IntoClientRequest::into_client_request("ws://127.0.0.1:5000").unwrap()).expect("Could not create read socket.");
+        let server_msg = socket.read_message();
+        match server_msg {
+            Ok(msg) => println!("Server ({}): {}", get_date_time(), msg),
+            Err(e) =>  {
+                match e {
+                    Error::ConnectionClosed => println!("Error: Server Disconnected."),
+                    _ => println!("Some other Error"),
+                }
+                break;
+            }
+        }
+    }
+    println!("Exit loop");
+}
+
+fn handle_send() {
+    loop {
+        let (mut socket, _response) = connect(IntoClientRequest::into_client_request("ws://127.0.0.1:5000").unwrap()).expect("Could not create write socket.");
+        let mut client_msg = String::new();
+        stdin().read_line(&mut client_msg).unwrap();
+        match socket.write_message(Message::from(client_msg)) {
+            Ok(_) => (), // Do nothing else on success
+            Err(e) =>  {
+                match e {
+                    Error::ConnectionClosed => println!("Error: Server Disconnected."),
+                    _ => (),
+                }
+                break;
+            }
+        }
+    }
 }

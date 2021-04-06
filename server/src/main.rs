@@ -46,7 +46,7 @@ fn send_string(writer: &mut BufWriter<&TcpStream>, msg: &str) -> Result<()> {
 }
 
 fn handle_read(stream: TcpStream) {
-    let mut socket = accept(stream).unwrap();
+    let mut socket = accept(stream).expect("Could not create read socket.");
     loop {
         let client_msg = socket.read_message();
         match client_msg {
@@ -63,7 +63,7 @@ fn handle_read(stream: TcpStream) {
 }
 
 fn handle_send(stream: TcpStream) {
-    let mut socket = accept(stream).unwrap();
+    let mut socket = accept(stream).expect("Could not create write socket.");
     loop {
         let mut server_msg = String::new();
         stdin().read_line(&mut server_msg).unwrap();
