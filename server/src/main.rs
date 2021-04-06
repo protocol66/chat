@@ -1,9 +1,11 @@
 // Server Client
-use chrono::{format::*, prelude::*};
+use chrono::{format::*, prelude::*, };
 use std::io::*;
-use std::net::{TcpListener, TcpStream};
+use std::net::{TcpListener, TcpStream, };
+use std::thread;
+use tungstenite::{server::accept, error::Error, WebSocket, Message};
 
-const IP: &str = "10.129.195.97:5000"; // Server IP
+const IP: &str = "127.0.0.1:5000"; // Server IP
 
 fn main() {
     println!("Starting Server at {}", IP);
@@ -12,38 +14,22 @@ fn main() {
 
     println!("Waiting for connection...");
     for stream in listener.incoming() {
-        // iterate over each connection
-        let stream = stream.unwrap(); // get TcpStream object from iterator
-        let mut reader = BufReader::new(&stream); // reader to make reading from stream more efficient
-        let mut writer = BufWriter::new(&stream); // writer to make writing to stream more efficient
-        let mut server_msg = String::new();
-        let mut client_msg = String::new();
+        // // iterate over each connection
+        thread::spawn(move || {
+            let stream = stream.expect("Connection Failed.");
+            let read_stream = stream.try_clone().expect("Failed to Clone TcpStream.");
+            let send_stream = stream.try_clone().expect("Failed to Clone TcpStream.");
+            thread::spawn(move || {
+                handle_read(read_stream);
+            });
+            thread::spawn(move || {
+                handle_send(send_stream);
+            });
+        });
 
-        println!("Connection accepted from {}", stream.peer_addr().unwrap()); // print client IP
-        println!("Enter your server messages one by one and press return key!");
-
-
-        loop {
-            client_msg.clear();
-            server_msg.clear();
-            match reader.read_line(&mut client_msg) { // read incoming text
-                Ok(_) => (),  // Do nothing else on success
-                Err(_) => {   // Break out of loop if connection dropped and wait for next connection
-                    println!("Error: Client Disconnected..... Waiting for next connection...");
-                    break;
-                },
-            };
-            println!("Client ({}): {}", get_date_time(), client_msg);
-            stdin().read_line(&mut server_msg).unwrap(); // input from cli
-            match send_string(&mut writer, &server_msg) { // send msg
-                Ok(_) => (), // Do nothing else on success
-                Err(_) => {  // Break out of loop if connection dropped and wait for next connection
-                    println!("Error: Client Disconnected..... Waiting for next connection...");
-                    break;
-                },
-            }
-        }
     }
+
+    drop(listener);
 }
 
 // I: None
@@ -58,3 +44,39 @@ fn send_string(writer: &mut BufWriter<&TcpStream>, msg: &str) -> Result<()> {
     writer.write(msg.as_bytes()).unwrap();
     writer.flush()
 }
+
+fn handle_read(stream: TcpStream) {
+    let mut socket = accept(stream).unwrap();
+    loop {
+        let client_msg = socket.read_message();
+        match client_msg {
+            Ok(msg) => println!("Client ({}): {}", get_date_time(), msg),
+            Err(e) =>  {
+                match e {
+                    Error::ConnectionClosed => println!("Error: Client Disconnected."),
+                    _ => (),
+                }
+                break;
+            }
+        }
+    }
+}
+
+fn handle_send(stream: TcpStream) {
+    let mut socket = accept(stream).unwrap();
+    loop {
+        let mut server_msg = String::new();
+        stdin().read_line(&mut server_msg).unwrap();
+        match socket.write_message(Message::from(server_msg)) {
+            Ok(_) => (), // Do nothing else on success
+            Err(e) =>  {
+                match e {
+                    Error::ConnectionClosed => println!("Error: Client Disconnected."),
+                    _ => (),
+                }
+                break;
+            }
+        }
+    }
+}
+
