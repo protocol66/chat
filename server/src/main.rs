@@ -3,7 +3,7 @@ use chrono::{format::*, prelude::*};
 use std::io::*;
 use std::net::{TcpListener, TcpStream};
 
-const IP: &str = "10.129.195.97:5000"; // Server IP
+const IP: &str = "127.0.0.1:5000"; // Server IP
 
 fn main() {
     println!("Starting Server at {}", IP);
@@ -23,24 +23,18 @@ fn main() {
         println!("Enter your server messages one by one and press return key!");
 
 
-        loop {
+        'outer: loop {
             client_msg.clear();
             server_msg.clear();
-            match reader.read_line(&mut client_msg) { // read incoming text
-                Ok(_) => (),  // Do nothing else on success
-                Err(_) => {   // Break out of loop if connection dropped and wait for next connection
-                    println!("Error: Client Disconnected..... Waiting for next connection...");
-                    break;
-                },
-            };
+            if reader.read_line(&mut client_msg).is_err() {
+                println!("Error: Client Disconnected..... Waiting for next connection...");
+                break 'outer;
+            }
             println!("Client ({}): {}", get_date_time(), client_msg);
             stdin().read_line(&mut server_msg).unwrap(); // input from cli
-            match send_string(&mut writer, &server_msg) { // send msg
-                Ok(_) => (), // Do nothing else on success
-                Err(_) => {  // Break out of loop if connection dropped and wait for next connection
-                    println!("Error: Client Disconnected..... Waiting for next connection...");
-                    break;
-                },
+            if send_string(&mut writer, &server_msg).is_err() {
+                println!("Error: Client Disconnected..... Waiting for next connection...");
+                break 'outer;
             }
         }
     }

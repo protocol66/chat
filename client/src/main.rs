@@ -28,23 +28,17 @@ fn main() {
 
         println!("Enter your client messages one by one and press return key!");
 
-        loop {
+        'outer: loop {
             server_msg.clear();
             client_msg.clear();
             stdin().read_line(&mut client_msg).unwrap(); // input from cli
-            match send_string(&mut writer, &client_msg) { // send msg
-                Ok(_) => (),  // Do nothing else on success
-                Err(_) => {   // Break out of loop if connection dropped and quit
-                    println!("Error: Server Disconnected..... Quiting");
-                    break;
-                }
+            if send_string(&mut writer, &client_msg).is_err() {
+                println!("Error: Client Disconnected..... Waiting for next connection...");
+                break 'outer;
             }
-            match reader.read_line(&mut server_msg) { // read incoming text
-                Ok(_) => (),  // Do nothing else on success
-                Err(_) => {   // Break out of loop if connection dropped and quit
-                    println!("Error: Server Disconnected..... Quiting");
-                    break;
-                }
+            if reader.read_line(&mut server_msg).is_err() {
+                println!("Error: Client Disconnected..... Waiting for next connection...");
+                break 'outer;
             }
             println!("Server ({}): {}", get_date_time(), server_msg);
         }
